@@ -1500,14 +1500,78 @@ struct Document {
                 selected.HomeEnd(this, dc, k == A_HOME || k == A_CHOME);
                 return nullptr;
 
-            case A_IMAGESCN: {
-                loopallcellssel(c, true)
-                    if (c->text.image)
-                        c->text.image->ResetScale(sys->frame->csf);
-                selected.g->cell->ResetChildren();
-                c->ResetLayout();
+
+            case A_IMAGESCP:
+            case A_IMAGESCF: {
+                long v = 0;
+                loopallcellssel(c, true) {
+                    if(c->text.image) {
+                        if(!v) {
+                            v = wxGetNumberFromUser(
+                                _(L"Please enter the percentage you want the image scaled by:"), L"%",
+                                _(L"Image Resize"), 50, 5, 400, sys->frame);
+                            if (v < 0) return nullptr;
+                        }
+                        auto sc = v / 100.0;
+                        if (k == A_IMAGESCP) {
+                            c->text.image->BitmapScale(sc);
+                        } else {
+                            c->text.image->DisplayScale(sc);
+                        }
+                        c->ResetLayout();
+                    }
+                }
                 Refresh();
                 return nullptr;
+            }
+        
+
+            case A_IMAGESCN: {
+                loopallcellssel(c, true)
+                    if (c->text.image) {
+                        c->text.image->ResetScale(sys->frame->csf);
+                        c->ResetChildren();
+                        c->ResetLayout();
+                    }
+                Refresh();
+                return nullptr;
+            }
+
+            case A_BROWSE: {
+                const wxChar *returnmessage = nullptr;
+                int counter = 0;
+                loopallcellssel(c, true) {
+                    if (counter >= MAX_LAUNCHES) {
+                        returnmessage = _(L"Maximum number of launches reached.");
+                        break;
+                    }
+                    if (!wxLaunchDefaultBrowser(c->text.ToText(0, selected, A_EXPTEXT))) {
+                        returnmessage = _(L"The browser could not open at least one link.");
+                    } else {
+                        counter++;
+                    }
+                }
+                return returnmessage;
+            }
+
+            case A_BROWSEF: {
+                const wxChar *returnmessage = nullptr;
+                int counter = 0;
+                loopallcellssel(c, true) {
+                    if (counter >= MAX_LAUNCHES) {
+                        returnmessage = _(L"Maximum number of launches reached.");
+                        break;
+                    }
+                    wxString f = c->text.ToText(0, selected, A_EXPTEXT);
+                    wxFileName fn(f);
+                    if (fn.IsRelative()) fn.MakeAbsolute(wxFileName(filename).GetPath());
+                    if (!wxLaunchDefaultApplication(fn.GetFullPath())) {
+                        returnmessage = _(L"At least one file could not be opened.");
+                    } else {
+                        counter++;
+                    }
+                }
+                return returnmessage;
             }
         }
 
@@ -1559,42 +1623,11 @@ struct Document {
             case A_NEXT: selected.Next(this, dc, false); return nullptr;
             case A_PREV: selected.Next(this, dc, true); return nullptr;
 
-            case A_BROWSE:
-                if (!wxLaunchDefaultBrowser(c->text.ToText(0, selected, A_EXPTEXT)))
-                    return _(L"Cannot launch browser for this link.");
-                return nullptr;
-
-            case A_BROWSEF: {
-                wxString f = c->text.ToText(0, selected, A_EXPTEXT);
-                wxFileName fn(f);
-                if (fn.IsRelative()) fn.MakeAbsolute(wxFileName(filename).GetPath());
-                if (!wxLaunchDefaultApplication(fn.GetFullPath())) return _(L"Cannot find file.");
-                return nullptr;
-            }
-
             case A_IMAGECPY: {
                 if (selected.Thin()) return NoThin();
                 if (!c->text.image) return _(L"No image in this cell.");
                 return CopyImageToClipboard(c);
             }            
-
-            case A_IMAGESCP:
-            case A_IMAGESCF: {
-                if (!c->text.image) return _(L"No image in this cell.");
-                long v = wxGetNumberFromUser(
-                    _(L"Please enter the percentage you want the image scaled by:"), L"%",
-                    _(L"Image Resize"), 50, 5, 400, sys->frame);
-                if (v < 0) return nullptr;
-                auto sc = v / 100.0;
-                if (k == A_IMAGESCP) {
-                    c->text.image->BitmapScale(sc);
-                } else {
-                    c->text.image->DisplayScale(sc);
-                }
-                c->ResetLayout();
-                Refresh();
-                return nullptr;
-            }
 
             case A_ENTERGRID:
                 if (!c->grid) Action(dc, A_NEWGRID);
@@ -1645,6 +1678,16 @@ struct Document {
                 loopallcells(ci) ci->text.filtered = ci->cellcolor != c->cellcolor;
                 rootgrid->ResetChildren();
                 Refresh();
+                return nullptr;
+
+            case A_FILTERMATCHNEXT:
+                bool lastsel = true;
+                Cell *next =
+                    rootgrid->FindNextFilterMatch(nullptr, selected.GetCell(), lastsel);
+                if (!next) return _(L"No matches for filter.");
+                if (next->parent) selected = next->parent->grid->FindCell(next);
+                sw->SetFocus();
+                ScrollOrZoom(dc, true);
                 return nullptr;
         }
 
